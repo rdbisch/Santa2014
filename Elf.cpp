@@ -72,44 +72,6 @@ string timeToString(int time) {
 }
 
 /**
- * From http://stackoverflow.com/questions/6089231/getting-std-ifstream-to-handle-lf-cr-and-crlf
- */
-std::istream& safeGetline(std::istream& is, std::string& t)
-{
-    t.clear();
-
-    // The characters in the stream are read one-by-one using a std::streambuf.
-    // That is faster than reading them one-by-one using the std::istream.
-    // Code that uses streambuf this way must be guarded by a sentry object.
-    // The sentry object performs various tasks,
-    // such as thread synchronization and updating the stream state.
-
-    std::istream::sentry se(is, true);
-    std::streambuf* sb = is.rdbuf();
-
-    for(;;) {
-        int c = sb->sbumpc();
-        switch (c) {
-        case '\n':
-            return is;
-        case '\r':
-            if(sb->sgetc() == '\n')
-                sb->sbumpc();
-            return is;
-        case EOF:
-            // Also handle the case when the last line has no line ending
-            if(t.empty())
-                is.setstate(std::ios::eofbit);
-            return is;
-        default:
-            t += (char)c;
-        }
-    }
-}
-
-
-
-/**
  * Returns true if "minute" is in the sanctioned time frame.
  */
 bool isSanctionedTime(int minute) {
@@ -287,7 +249,7 @@ public:
         cout << "ToyId,ElfId,StartTime,Duration" << endl;
         getline(inToys, line);     //skip header
 
-        while (safeGetline(inToys, line)) {
+        while (std::getline(inToys, line)) {
             Toy T(line);
 
             Elf E = elves.top();
@@ -330,18 +292,16 @@ double score(int num_elves, string toysPath) {
     map<int, Toy> toys_todo;
     string line;
     ifstream inToys(toysPath);
-    safeGetline(inToys, line);
-    while (safeGetline(inToys, line)) {
+    std::getline(inToys, line);
+    while (std::getline(inToys, line)) {
         Toy t(line);
         toys_todo[t.id] = t;
     }
 
-    cout << "Toys has " << toys_todo.size() << " elements.\n";
-
     map<int, Elf> elves;
-    safeGetline(cin, line);
+    std::getline(cin, line);
     int maxTime = 0;
-    while (safeGetline(cin, line)) {
+    while (std::getline(cin, line)) {
         int toyId, elfId, year, month, day, hour, minute, duration;
         std::replace( line.begin(), line.end(), ',', ' ');
         std::stringstream ss(line);
