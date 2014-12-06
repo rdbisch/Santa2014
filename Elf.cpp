@@ -10,9 +10,12 @@
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
+#include <iomanip>
 #include <queue>
 #include <string>
 #include <sstream>
+#include <set>
+#include <map>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -67,6 +70,44 @@ string timeToString(int time) {
     strftime(output, sizeof(output), "%Y %-m %-d %-H %-M", after);
     return string(output);
 }
+
+/**
+ * From http://stackoverflow.com/questions/6089231/getting-std-ifstream-to-handle-lf-cr-and-crlf
+ */
+std::istream& safeGetline(std::istream& is, std::string& t)
+{
+    t.clear();
+
+    // The characters in the stream are read one-by-one using a std::streambuf.
+    // That is faster than reading them one-by-one using the std::istream.
+    // Code that uses streambuf this way must be guarded by a sentry object.
+    // The sentry object performs various tasks,
+    // such as thread synchronization and updating the stream state.
+
+    std::istream::sentry se(is, true);
+    std::streambuf* sb = is.rdbuf();
+
+    for(;;) {
+        int c = sb->sbumpc();
+        switch (c) {
+        case '\n':
+            return is;
+        case '\r':
+            if(sb->sgetc() == '\n')
+                sb->sbumpc();
+            return is;
+        case EOF:
+            // Also handle the case when the last line has no line ending
+            if(t.empty())
+                is.setstate(std::ios::eofbit);
+            return is;
+        default:
+            t += (char)c;
+        }
+    }
+}
+
+
 
 /**
  * Returns true if "minute" is in the sanctioned time frame.
@@ -142,7 +183,7 @@ int applyRestingPeriod(int current, int unsanctioned) {
     } while (unsanctioned > 0);
 
     // Some edge cases can land right on 19:00
-    if ( (current % MID) == 1140 ) return incrementToNextFence(current);
+    // if ( (current % MID) == 1140 ) return incrementToNextFence(current);
 
     return current;
 }
@@ -159,6 +200,9 @@ public:
     int duration;
 
 public:
+    // default constructor for containers
+    Toy() : id(-1), arrivalTime(-1), duration(-1) { }
+
     Toy(std::string line) {
         int year, month, day, hour, minute;
         std::replace( line.begin(), line.end(), ',', ' ');
@@ -172,6 +216,10 @@ public:
         out << "(toy " << id << " arrival " << timeToString(arrivalTime) << " duration " << duration << ")";
         return out.str();
     }
+
+    bool operator<(const Toy& t) const {
+        return id < t.id;
+    }
 };
 
 class Elf {
@@ -180,6 +228,9 @@ public:
     double rating;
     int next_available_time;
 public:
+    // default constructor for containers
+    Elf() : id(-1), rating(0.0), next_available_time(-1) { }
+
     Elf(int ID) : id(ID), rating(1.0), next_available_time(540) { }
 
     /** 
@@ -195,6 +246,10 @@ public:
         rating = max(0.25, min(4.0, rating * pow(1.02, std::get<0>(res) / 60.0) * pow(0.90, std::get<1>(res) / 60.0)));
 
         return real_duration;
+    }
+
+    int expectedDuration(const Toy& T) const {
+        return (int)ceil(T.duration / rating);
     }
 
     string toString() const {
@@ -230,16 +285,15 @@ public:
         string line;
        
         cout << "ToyId,ElfId,StartTime,Duration" << endl;
-        std::getline(inToys, line);     //skip header
+        getline(inToys, line);     //skip header
 
-        while (std::getline(inToys, line)) {
+        while (safeGetline(inToys, line)) {
             Toy T(line);
 
             Elf E = elves.top();
             elves.pop();
 
             int time = std::max(T.arrivalTime, E.next_available_time);
-            double rating = E.rating;
             int actual_duration = E.update_elf(time, T.duration);
 
             cout << T.id << "," << E.id << "," << timeToString(time) << "," << actual_duration << endl;
@@ -248,15 +302,103 @@ public:
     }
 };
 
+double score(int num_elves, string toysPath) ;
 int main(int argc, char** argv) {
     init_startTime();
 
     if ( argc < 3 ) {
-        cerr << "Usage:\n\ta.out [n] [toys]\n\n\t[n]\tinteger number of elves\n"
+usage_message:
+        cerr << "Usage:\n\ta.out (--score) [n] [toys]\n\n"
+            << "\t--score\tIf present will score the submission on stdin.  If not will produce naive solution.\n"
+            << "\t[n]\tinteger number of elves\n"
             << "\t[toys]\tPath to list of toys.\n";
         std::exit(1);
     }
 
-    Elves e = Elves( atoi(argv[1]), string(argv[2]) );
+    if ( strcmp(argv[1], "--score") == 0 ) {
+        if (argc < 4) goto usage_message;
+        int n = atoi(argv[2]);
+        string toys = string(argv[3]);
+        cout << std::setprecision(15) << score( n, toys ) << endl;
+    } else {
+        Elves e = Elves( atoi(argv[1]), string(argv[2]) );
+    }
+    return 0;
+}
+
+double score(int num_elves, string toysPath) {
+    map<int, Toy> toys_todo;
+    string line;
+    ifstream inToys(toysPath);
+    safeGetline(inToys, line);
+    while (safeGetline(inToys, line)) {
+        Toy t(line);
+        toys_todo[t.id] = t;
+    }
+
+    cout << "Toys has " << toys_todo.size() << " elements.\n";
+
+    map<int, Elf> elves;
+    safeGetline(cin, line);
+    int maxTime = 0;
+    while (safeGetline(cin, line)) {
+        int toyId, elfId, year, month, day, hour, minute, duration;
+        std::replace( line.begin(), line.end(), ',', ' ');
+        std::stringstream ss(line);
+        ss >> toyId >> elfId >> year >> month >> day >> hour >> minute >> duration;
+
+        auto toyIt = toys_todo.find(toyId);
+
+        if (toyIt == toys_todo.end()) {
+            cerr << "Request to build toy ID " << toyId << " which does not exist "
+                << "in the database.";
+            std::exit(1);
+        }
+
+        auto elfIt = elves.find(elfId);
+        if ( elfIt == elves.end() ) {
+            elves[elfId] = Elf(elfId);
+            elfIt = elves.find(elfId);
+        }
+
+        Elf& E = elfIt->second;
+        Toy& T = toyIt->second;
+        
+        int time = stringToTime(year, month, day, hour, minute);
+
+        if ( E.next_available_time > time ) {
+            cerr << "Request for Elf id " << E.id << " at time " << timeToString(time)
+                << " but he is not available until " << timeToString(E.next_available_time)
+                << ". This error occured during toy " << toyId << endl;
+            std::exit(1);
+        }
+
+        if ( duration < E.expectedDuration(T)) {
+            cerr << "Duration (" << duration << ") supplied for Toy " << T.toString()
+                << " for Elf(" << E.toString() << ") is less than the elf "
+                << "is expected to need (" << E.expectedDuration(T) << ")."
+                << endl;
+            std::exit(1);
+        }
+
+        maxTime = max(maxTime, time + E.expectedDuration(T));
+        E.update_elf(time, T.duration);
+        toys_todo.erase(toyIt);
+    }
+
+    if (toys_todo.size() > 0) {
+        cerr << "Not all toys have been completed.  There are " << toys_todo.size()
+            << " toys remaining, the first of which is " << (toys_todo.begin()->second.toString())
+            << endl;
+        std::exit(1);
+    }
+
+    if (elves.size() > num_elves) {
+        cerr << "Program was ran with a max number of elves of " << num_elves
+            << " but you used " << elves.size() << "." << endl;
+        std::exit(1);
+    }
+
+    return maxTime * log(1.0 + elves.size());
 }
 
