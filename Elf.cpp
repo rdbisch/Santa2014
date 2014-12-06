@@ -115,39 +115,33 @@ std::tuple<int, int> getSanctionedBreakdown(int startMinute, int duration) {
     return std::tuple<int, int>(S, U);
 }
 
-/**
- * Applies the resting period to the current time
- * with special caveats for new rules
- */
 int applyRestingPeriod(int current, int unsanctioned) {
-    int loop = 0;
 
-    if ( unsanctioned == 0 ) {
-        if ((current % MID) == 1140) return incrementToNextFence(current);
-        else return current;
+    if (unsanctioned == 0) {
+        if (isSanctionedTime(current)) return current;
+        else return incrementToNextFence(current);
     }
 
-    do { 
-        ++loop;
-        /* If current is not sanctioned, move to next sanction time */
-        if ( ! isSanctionedTime(current) ) {
-            current = incrementToNextFence(current);
-            ++loop;
-        }
+    int num_days_since_jan1 = current / (60 * 24);
+    int rest_time = unsanctioned;
+    int rest_time_in_working_days = rest_time / 600;
+    int rest_time_remaining_minutes = rest_time % 600;
 
-        /* We are now in sanctioned time..  Use rest of time
-         * in current working day */
-        int stopTime = incrementToNextFence(current);
-        int restMinutes = min( stopTime - current, unsanctioned ); 
+    int local_start = current % (60 * 24);
+    if (local_start < 540) local_start = 540;
+    else if (local_start > 1140) {
+        num_days_since_jan1 += 1;
+        local_start = 540;
+    }
 
-        current += restMinutes;
-        unsanctioned -= restMinutes;
-    } while (unsanctioned > 0);
+    if (local_start + rest_time_remaining_minutes > 1140) {
+        num_days_since_jan1 += 1;
+        rest_time_remaining_minutes -= (1140 - local_start);
+        local_start = 540;
+    }
 
-    // Some edge cases can land right on 19:00
-    // if ( (current % MID) == 1140 ) return incrementToNextFence(current);
-
-    return current;
+    int total_days = num_days_since_jan1 + rest_time_in_working_days;
+    return total_days * (60*24) + local_start + rest_time_remaining_minutes;
 }
 
 /**

@@ -20,5 +20,12 @@ There is also the ability to score submissions:
 0inputs+0outputs (0major+156697minor)pagefaults 0swaps
 ```
 
-This version of the code seems to produce a slightly better solution than the reference code, but only by a few days.
+This version now produces identical output to Kaggle's Python code.
+
+```
+rdbisch@mercury:~/work/kaggle/Santa2014$ /usr/bin/time ./a.out 900 ../HelpingSantasHelpers/toys_rev2.csv | ./a.out --score 900 ../HelpingSantasHelpers/toys_rev2.csv
+40.80user 4.40system 1:05.41elapsed 69%CPU (0avgtext+0avgdata 1512maxresident)k
+0inputs+0outputs (0major+431minor)pagefaults 0swaps
+1875730155.05752
+```
 
